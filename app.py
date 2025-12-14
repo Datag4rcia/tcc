@@ -2,9 +2,9 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-# =========================
+# ==================================================
 # CONFIGURAÇÃO DA PÁGINA
-# =========================
+# ==================================================
 st.set_page_config(
     page_title="Dashboard de Campanhas",
     page_icon="📊",
@@ -14,18 +14,18 @@ st.set_page_config(
 st.title("📊 Dashboard de Análise de Campanhas")
 st.markdown("---")
 
-# =========================
+# ==================================================
 # UPLOAD DO ARQUIVO
-# =========================
+# ==================================================
 uploaded_file = st.file_uploader("Carregar arquivo CSV", type=["csv", "txt"])
 
 if uploaded_file is None:
     st.info("👆 Faça upload do arquivo para iniciar")
     st.stop()
 
-# =========================
-# LEITURA (BASE SEPARADA POR TAB)
-# =========================
+# ==================================================
+# LEITURA DO ARQUIVO (SEPARADOR TAB)
+# ==================================================
 try:
     uploaded_file.seek(0)
     df = pd.read_csv(uploaded_file, sep="\t")
@@ -35,35 +35,52 @@ except Exception:
 
 st.success(f"✅ Arquivo carregado com sucesso — {len(df)} registros")
 
-# =========================
+# ==================================================
 # DEBUG OPCIONAL
-# =========================
+# ==================================================
 with st.expander("🔍 Estrutura da base"):
     st.write(df.columns.tolist())
     st.dataframe(df.head())
 
-# =========================
+# ==================================================
 # LIMPEZA BÁSICA
-# =========================
+# ==================================================
 df.columns = df.columns.str.strip()
 
-# Colunas obrigatórias da SUA BASE
-required_cols = ["campaign", "persona", "resultado", "previous"]
+# ==================================================
+# MAPA DE PERSONAS (CLUSTER → PERSONA)
+# ==================================================
+mapa_personas = {
+    1: "Jovem Promissor",
+    2: "Operário Consciente",
+    3: "Autônomo Endividado",
+    4: "Rico Endividado",
+    5: "Adulto Provedor",
+    6: "Jovem Empreendedor",
+    7: "Empregada Solteira",
+    8: "Meia Idade Divorciado",
+    9: "Baixa Renda Endividado"
+}
 
-missing = [c for c in required_cols if c not in df.columns]
-if missing:
-    st.error(f"❌ Colunas ausentes: {missing}")
-    st.stop()
+# Garantir tipo correto do cluster
+df["cluster"] = pd.to_numeric(df["cluster"], errors="coerce").astype("Int64")
 
-# Garantir tipos corretos
-df["persona"] = df["persona"].astype(str).str.strip()
+# Criar coluna persona a partir do cluster
+df["persona"] = df["cluster"].map(mapa_personas)
+
+# Remover registros sem persona
+df = df[df["persona"].notna()]
+
+# ==================================================
+# GARANTIR TIPOS DAS VARIÁVEIS PRINCIPAIS
+# ==================================================
 df["campaign"] = df["campaign"].astype(str)
 df["resultado"] = pd.to_numeric(df["resultado"], errors="coerce").fillna(0)
 df["previous"] = pd.to_numeric(df["previous"], errors="coerce").fillna(0)
 
-# =========================
+# ==================================================
 # SIDEBAR – FILTROS
-# =========================
+# ==================================================
 st.sidebar.header("🔍 Filtros")
 
 campanhas = ["Todas"] + sorted(df["campaign"].unique())
@@ -80,9 +97,9 @@ if campanha_sel != "Todas":
 if persona_sel != "Todas":
     df_filt = df_filt[df_filt["persona"] == persona_sel]
 
-# =========================
-# MÉTRICAS
-# =========================
+# ==================================================
+# MÉTRICAS PRINCIPAIS
+# ==================================================
 total = len(df_filt)
 
 sucesso = (df_filt["resultado"] == 1).sum()
@@ -100,9 +117,9 @@ c4.metric("Personas Únicas", df_filt["persona"].nunique())
 
 st.markdown("---")
 
-# =========================
+# ==================================================
 # PERSONA SELECIONADA
-# =========================
+# ==================================================
 st.subheader("🧠 Persona")
 
 if persona_sel != "Todas":
@@ -110,9 +127,9 @@ if persona_sel != "Todas":
 else:
     st.info("Selecione uma persona para visualizar")
 
-# =========================
+# ==================================================
 # GRÁFICO – DISTRIBUIÇÃO POR PERSONA
-# =========================
+# ==================================================
 st.subheader("👥 Distribuição por Persona")
 
 persona_counts = (
@@ -137,9 +154,9 @@ fig_persona.update_layout(
 
 st.plotly_chart(fig_persona, use_container_width=True)
 
-# =========================
+# ==================================================
 # GRÁFICO – RESULTADO
-# =========================
+# ==================================================
 st.subheader("🎯 Resultado da Campanha")
 
 resultado_counts = (
@@ -160,9 +177,9 @@ fig_res = px.pie(
 
 st.plotly_chart(fig_res, use_container_width=True)
 
-# =========================
+# ==================================================
 # TABELA ANALÍTICA POR PERSONA
-# =========================
+# ==================================================
 st.subheader("📌 Performance por Persona")
 
 tabela_persona = (
@@ -178,9 +195,9 @@ tabela_persona = (
 
 st.dataframe(tabela_persona, use_container_width=True)
 
-# =========================
-# DADOS FINAIS
-# =========================
+# ==================================================
+# DADOS FILTRADOS + DOWNLOAD
+# ==================================================
 st.subheader("📋 Dados Filtrados")
 
 st.dataframe(df_filt, use_container_width=True, height=400)
@@ -188,8 +205,8 @@ st.dataframe(df_filt, use_container_width=True, height=400)
 csv = df_filt.to_csv(index=False).encode("utf-8-sig")
 
 st.download_button(
-    "⬇️ Download dados filtrados",
-    csv,
-    "dados_filtrados.csv",
-    "text/csv"
+    label="⬇️ Download dados filtrados",
+    data=csv,
+    file_name="dados_filtrados.csv",
+    mime="text/csv"
 )
