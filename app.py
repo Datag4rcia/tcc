@@ -1,229 +1,131 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import plotly.graph_objects as go
 
-# =========================
-# CONFIGURAÇÃO DA PÁGINA
-# =========================
+# Configuração da página
 st.set_page_config(
     page_title="Dashboard de Campanhas",
     page_icon="📊",
     layout="wide"
 )
 
+# Título
 st.title("📊 Dashboard de Análise de Campanhas")
 st.markdown("---")
 
-# =========================
-# UPLOAD DO ARQUIVO
-# =========================
-uploaded_file = st.file_uploader("Carregar arquivo CSV", type=["csv"])
+# Upload do arquivo
+uploaded_file = st.file_uploader("Carregar arquivo CSV", type=['csv'])
 
-if uploaded_file is None:
-    st.info("👆 Faça upload de um arquivo CSV para iniciar")
-    st.stop()
+if uploaded_file is not None:
+    # Carregar dados
+    df = pd.read_csv(uploaded_file)
+    
+    # Limpar nomes das colunas
+    df.columns = df.columns.str.strip().str.lower()
+    
+    # Sidebar - Filtros
+    st.sidebar.header("🔍 Filtros")
+    
+    # Filtro de Campanha
+    campanhas = ['Todas'] + sorted(df['campaign'].unique().tolist())
+    campanha_selecionada = st.sidebar.selectbox("Campanha", campanhas)
+    
+    # Filtro de Persona
+    personas = ['Todas'] + sorted(df['persona'].unique().tolist())
+    persona_selecionada = st.sidebar.selectbox("Persona", personas)
+    
+    # Aplicar filtros
+    df_filtrado = df.copy()
+    if campanha_selecionada != 'Todas':
+        df_filtrado = df_filtrado[df_filtrado['campaign'] == campanha_selecionada]
+    if persona_selecionada != 'Todas':
+        df_filtrado = df_filtrado[df_filtrado['persona'] == persona_selecionada]
+    
+    # Métricas principais
+    col1, col2, col3, col4 = st.columns(4)
+    
+    total_registros = len(df_filtrado)
+    taxa_sucesso = (df_filtrado['resultado'].str.lower().isin(['sucesso', 'success']).sum() / total_registros * 100) if total_registros > 0 else 0
+    taxa_previousy = (df_filtrado['previousy'].str.lower().isin(['sim', 'yes', '1']).sum() / total_registros * 100) if total_registros > 0 else 0
+    personas_unicas = df_filtrado['persona'].nunique()
+    
+    with col1:
+        st.metric("Total de Registros", f"{total_registros:,}")
+    with col2:
+        st.metric("Taxa de Sucesso", f"{taxa_sucesso:.1f}%")
+    with col3:
+        st.metric("Contato Prévio", f"{taxa_previousy:.1f}%")
+    with col4:
+        st.metric("Personas Únicas", personas_unicas)
+    
+    st.markdown("---")
+    
+    # Gráficos
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📈 Distribuição por Campanha")
+        campaign_counts = df_filtrado['campaign'].value_counts().reset_index()
+        campaign_counts.columns = ['campaign', 'count']
+        fig1 = px.bar(campaign_counts, x='campaign', y='count',
+                      color='count',
+                      color_continuous_scale='Blues',
+                      labels={'campaign': 'Campanha', 'count': 'Quantidade'})
+        fig1.update_layout(showlegend=False)
+        st.plotly_chart(fig1, use_container_width=True)
+    
+    with col2:
+        st.subheader("🎯 Resultado das Ações")
+        resultado_counts = df_filtrado['resultado'].value_counts().reset_index()
+        resultado_counts.columns = ['resultado', 'count']
+        fig2 = px.pie(resultado_counts, values='count', names='resultado',
+                      color_discrete_sequence=['#10b981', '#ef4444'])
+        st.plotly_chart(fig2, use_container_width=True)
+    
+    col3, col4 = st.columns(2)
+    
+    with col3:
+        st.subheader("👥 Distribuição por Persona")
+        persona_counts = df_filtrado['persona'].value_counts().reset_index()
+        persona_counts.columns = ['persona', 'count']
+        fig3 = px.bar(persona_counts, x='persona', y='count',
+                      color='count',
+                      color_continuous_scale='Greens',
+                      labels={'persona': 'Persona', 'count': 'Quantidade'})
+        fig3.update_layout(showlegend=False)
+        st.plotly_chart(fig3, use_container_width=True)
+    
+    with col4:
+        st.subheader("📞 Contato Prévio (Previousy)")
+        previousy_counts = df_filtrado['previousy'].value_counts().reset_index()
+        previousy_counts.columns = ['previousy', 'count']
+        fig4 = px.pie(previousy_counts, values='count', names='previousy',
+                      color_discrete_sequence=['#f59e0b', '#8b5cf6'])
+        st.plotly_chart(fig4, use_container_width=True)
+    
+    st.markdown("---")
+    
+    # Tabela de dados
+    st.subheader("📋 Dados Filtrados")
+    st.dataframe(df_filtrado, use_container_width=True)
+    
+    # Download dos dados filtrados
+    csv = df_filtrado.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="⬇️ Download dados filtrados (CSV)",
+        data=csv,
+        file_name='dados_filtrados.csv',
+        mime='text/csv',
+    )
 
-# =========================
-# LEITURA ROBUSTA DO CSV
-# =========================
-separadores = [";", ",", "\t", "|"]
-df = None
-
-for sep in separadores:
-    for enc in ["utf-8", "latin-1", "iso-8859-1", "cp1252"]:
-        try:
-            uploaded_file.seek(0)
-            temp = pd.read_csv(uploaded_file, sep=sep, encoding=enc)
-            if len(temp.columns) > 1:
-                df = temp
-                break
-        except:
-            pass
-    if df is not None:
-        break
-
-if df is None:
-    st.error("❌ Não foi possível ler o arquivo CSV.")
-    st.stop()
-
-st.success(f"✅ Arquivo carregado com sucesso ({len(df)} linhas)")
-
-# =========================
-# LIMPEZA E PADRONIZAÇÃO
-# =========================
-df.columns = df.columns.str.strip()
-
-# Mapear colunas ignorando maiúsculas/minúsculas
-col_map = {c.lower(): c for c in df.columns}
-required = ["campaign", "persona", "resultado", "previousy"]
-
-missing = [c for c in required if c not in col_map]
-if missing:
-    st.error(f"❌ Colunas obrigatórias ausentes: {missing}")
-    st.stop()
-
-df = df.rename(columns={col_map[c]: c for c in required})
-
-# Limpar persona (texto qualitativo)
-df = df[df["persona"].notna()]
-df["persona"] = df["persona"].astype(str).str.strip()
-
-# =========================
-# SIDEBAR – FILTROS
-# =========================
-st.sidebar.header("🔍 Filtros")
-
-campanhas = ["Todas"] + sorted(df["campaign"].dropna().astype(str).unique())
-personas = ["Todas"] + sorted(df["persona"].unique())
-
-campanha_sel = st.sidebar.selectbox("Campanha", campanhas)
-persona_sel = st.sidebar.selectbox("Persona", personas)
-
-df_filt = df.copy()
-
-if campanha_sel != "Todas":
-    df_filt = df_filt[df_filt["campaign"].astype(str) == campanha_sel]
-
-if persona_sel != "Todas":
-    df_filt = df_filt[df_filt["persona"] == persona_sel]
-
-# =========================
-# MÉTRICAS
-# =========================
-total = len(df_filt)
-
-sucesso = df_filt["resultado"].astype(str).str.lower().isin(
-    ["sucesso", "success", "sim", "yes"]
-).sum()
-
-previousy = df_filt["previousy"].astype(str).str.lower().isin(
-    ["sim", "yes", "1", "true"]
-).sum()
-
-taxa_sucesso = (sucesso / total * 100) if total > 0 else 0
-taxa_previousy = (previousy / total * 100) if total > 0 else 0
-
-c1, c2, c3, c4 = st.columns(4)
-
-c1.metric("Total de Registros", total)
-c2.metric("Taxa de Sucesso", f"{taxa_sucesso:.1f}%")
-c3.metric("Contato Prévio", f"{taxa_previousy:.1f}%")
-c4.metric("Personas Únicas", df_filt["persona"].nunique())
-
-st.markdown("---")
-
-# =========================
-# DESCRIÇÃO DA PERSONA
-# =========================
-st.subheader("🧠 Características da Persona")
-
-if persona_sel != "Todas":
-    st.success(persona_sel)
 else:
-    st.info("Selecione uma persona para visualizar suas características.")
-
-st.markdown("---")
-
-# =========================
-# GRÁFICOS
-# =========================
-if total == 0:
-    st.warning("⚠️ Nenhum dado para os filtros selecionados.")
-    st.stop()
-
-col1, col2 = st.columns(2)
-
-# ---- Campanhas
-with col1:
-    camp_counts = df_filt["campaign"].value_counts().reset_index()
-    camp_counts.columns = ["Campanha", "Quantidade"]
-
-    fig1 = px.bar(
-        camp_counts,
-        x="Campanha",
-        y="Quantidade",
-        text="Quantidade"
-    )
-    fig1.update_traces(textposition="outside")
-    fig1.update_layout(xaxis_tickangle=-45)
-    st.plotly_chart(fig1, use_container_width=True)
-
-# ---- Resultado
-with col2:
-    res_counts = df_filt["resultado"].value_counts().reset_index()
-    res_counts.columns = ["Resultado", "Quantidade"]
-
-    fig2 = px.pie(
-        res_counts,
-        values="Quantidade",
-        names="Resultado",
-        hole=0.4
-    )
-    st.plotly_chart(fig2, use_container_width=True)
-
-# =========================
-# PERSONAS (TEXTO LONGO)
-# =========================
-st.subheader("👥 Distribuição por Persona")
-
-persona_counts = (
-    df_filt
-    .groupby("persona", as_index=False)
-    .size()
-    .rename(columns={"size": "Quantidade"})
-)
-
-# Quebra de linha para texto longo
-persona_counts["Persona_wrap"] = (
-    persona_counts["persona"]
-    .str.wrap(35)
-    .str.replace("\n", "<br>", regex=False)
-)
-
-fig3 = px.bar(
-    persona_counts,
-    x="Persona_wrap",
-    y="Quantidade",
-    text="Quantidade"
-)
-
-fig3.update_traces(textposition="outside")
-fig3.update_layout(
-    xaxis_title="Persona (características)",
-    showlegend=False
-)
-
-st.plotly_chart(fig3, use_container_width=True)
-
-# =========================
-# TABELA ANALÍTICA
-# =========================
-st.subheader("📌 Performance por Persona")
-
-tabela_persona = (
-    df_filt
-    .groupby("persona")
-    .agg(
-        Total=("persona", "count"),
-        Sucesso=("resultado", lambda x: x.astype(str).str.lower().isin(["sucesso", "success"]).sum()),
-        Contato_Previo=("previousy", lambda x: x.astype(str).str.lower().isin(["sim", "yes", "1", "true"]).sum())
-    )
-    .reset_index()
-)
-
-st.dataframe(tabela_persona, use_container_width=True)
-
-# =========================
-# TABELA FINAL + DOWNLOAD
-# =========================
-st.subheader("📋 Dados Filtrados")
-
-st.dataframe(df_filt, use_container_width=True, height=400)
-
-csv = df_filt.to_csv(index=False).encode("utf-8-sig")
-st.download_button(
-    "⬇️ Download dos dados filtrados",
-    csv,
-    "dados_filtrados.csv",
-    "text/csv"
-)
+    st.info("👆 Por favor, faça upload do arquivo meus_dados.csv para visualizar o dashboard")
+    st.markdown("""
+    ### Formato esperado do CSV:
+    O arquivo deve conter as seguintes colunas:
+    - *campaign*: Nome da campanha
+    - *previousy*: Contato prévio (sim/não)
+    - *persona*: Tipo de persona
+    - *resultado*: Resultado da ação (sucesso/falha)
+    """)
