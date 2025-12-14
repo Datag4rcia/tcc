@@ -19,12 +19,35 @@ uploaded_file = st.file_uploader("Carregar arquivo CSV", type=['csv'])
 
 if uploaded_file is not None:
     try:
-        # Tentar diferentes encodings
-        try:
-            df = pd.read_csv(uploaded_file, encoding='utf-8')
-        except:
-            uploaded_file.seek(0)
-            df = pd.read_csv(uploaded_file, encoding='latin-1')
+        # Tentar diferentes encodings e separadores (priorizando ponto e vírgula)
+        separadores = [';', ',', '\t', '|']
+        df = None
+        sep_usado = None
+        enc_usado = None
+        
+        for sep in separadores:
+            for enc in ['utf-8', 'latin-1', 'iso-8859-1', 'cp1252']:
+                try:
+                    uploaded_file.seek(0)
+                    df_test = pd.read_csv(uploaded_file, encoding=enc, sep=sep)
+                    # Verificar se tem mais de uma coluna
+                    if len(df_test.columns) > 1:
+                        df = df_test
+                        sep_usado = sep
+                        enc_usado = enc
+                        break
+                except:
+                    continue
+            if df is not None:
+                break
+        
+        if df is None:
+            st.error("❌ Não foi possível ler o arquivo. Verifique o formato do CSV.")
+            st.info("💡 Dica: Certifique-se de que o arquivo está salvo com separador de ponto e vírgula (;)")
+            st.stop()
+        
+        st.success(f"✅ Arquivo lido com separador '{sep_usado}' e encoding '{enc_usado}'")
+        st.info(f"📊 {len(df)} linhas e {len(df.columns)} colunas encontradas")
         
         # Mostrar informações do arquivo carregado
         st.success(f"✅ Arquivo carregado com sucesso! {len(df)} linhas encontradas.")
@@ -73,9 +96,6 @@ if uploaded_file is not None:
         # Remover linhas onde persona está vazio
         df_work = df_work[df_work['persona'].notna()]
         df_work = df_work[df_work['persona'].astype(str).str.strip() != '']
-        
-        # Normalizar personas (capitalizar primeira letra de cada palavra)
-        df_work['persona'] = df_work['persona'].astype(str).str.title()
         
         st.info(f"📊 Dados após limpeza: {len(df_work)} registros válidos")
         
