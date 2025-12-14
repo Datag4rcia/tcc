@@ -97,6 +97,9 @@ if uploaded_file is not None:
         df_work = df_work[df_work['persona'].notna()]
         df_work = df_work[df_work['persona'].astype(str).str.strip() != '']
         
+        # Normalizar personas - Capitalizar primeira letra de cada palavra
+        df_work['persona'] = df_work['persona'].astype(str).str.strip().str.title()
+        
         st.info(f"📊 Dados após limpeza: {len(df_work)} registros válidos")
         
         # Sidebar - Filtros
